@@ -55,7 +55,7 @@ This command writes:
 - `results/release_verification/precision_recall.svg`
 - `results/release_verification/loss_vs_macro_f1.svg`
 
-`metrics.csv` contains mean/std over three seeds; `metrics_detailed.csv` contains per-seed rows and collapse diagnostics (`collapse_flag`, `unique_pred_classes`, prediction-class rates).
+`metrics.csv` contains mean/std over three seeds (`7, 13, 29`); `metrics_detailed.csv` contains per-seed rows and collapse diagnostics (`collapse_flag`, `unique_pred_classes`, prediction-class rates).
 
 These are synthetic-data verification artifacts for end-to-end pipeline validation (not paper table reproduction).
 
@@ -73,10 +73,10 @@ These are synthetic-data verification artifacts for end-to-end pipeline validati
 | mlp | 0.6889±0.0157 | 0.6882±0.0163 | 0.5908±0.0178 | 0.0000 |
 | angle_vqc | 0.5556±0.0786 | 0.4424±0.1543 | 0.6604±0.0465 | 0.6667 |
 | quop | 0.7444±0.0416 | 0.7422±0.0411 | 0.5842±0.0771 | 0.0000 |
-| quop_trainable | 0.7000±0.1414 | 0.6429±0.2189 | 0.6152±0.0564 | 0.3333 |
-| qwalkvec | 0.6000±0.0720 | 0.5293±0.1386 | 0.6713±0.0308 | 0.3333 |
-| qwalkvec_trainable | 0.5000±0.0000 | 0.3333±0.0000 | 0.6932±0.0001 | 1.0000 |
-| qpe | 0.5778±0.1100 | 0.4667±0.1886 | 0.6638±0.0419 | 0.6667 |
+| quop_trainable | 0.7333±0.0544 | 0.7316±0.0536 | 0.5705±0.0376 | 0.0000 |
+| qwalkvec | 0.6889±0.0314 | 0.6822±0.0332 | 0.6066±0.0550 | 0.0000 |
+| qwalkvec_trainable | 0.7111±0.0831 | 0.7040±0.0892 | 0.5901±0.0249 | 0.0000 |
+| qpe | 0.6556±0.0831 | 0.6483±0.0856 | 0.6270±0.0393 | 0.0000 |
 
 ## Development quality checks
 

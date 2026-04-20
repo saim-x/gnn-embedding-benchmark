@@ -146,22 +146,24 @@ class AngleVQCPlaceholder(nn.Module):
 class QuOpEmbedding(nn.Module):
     """Algorithm 1 — QuOp local operator-based node embedding."""
 
-    def __init__(self, config: ModelConfig, trainable_projection: bool) -> None:
+    def __init__(self, config: ModelConfig, input_dim: int, trainable_projection: bool) -> None:
         super().__init__()
         self.hop_radius = config.quop_hop_radius
         self.qubits = config.quop_qubits
         self.state_dim = 2 ** self.qubits
         self.summary_dim = 3 * self.state_dim
+        self.fused_dim = input_dim + self.summary_dim
         self.trainable_projection = trainable_projection
+        self.summary_norm = nn.LayerNorm(self.summary_dim, elementwise_affine=trainable_projection)
         if trainable_projection:
             self.proj = nn.Sequential(
-                nn.Linear(self.summary_dim, config.projection_hidden_dim),
+                nn.Linear(self.fused_dim, config.projection_hidden_dim),
                 nn.ReLU(),
                 nn.Linear(config.projection_hidden_dim, config.embedding_dim),
             )
         else:
             self.fixed_proj = FixedProjection(
-                in_dim=self.summary_dim,
+                in_dim=self.fused_dim,
                 out_dim=config.embedding_dim,
                 seed=config.seed + 11,
                 trainable=False,
@@ -213,7 +215,6 @@ class QuOpEmbedding(nn.Module):
         return descriptors
 
     def forward(self, node_features: torch.Tensor, adj: torch.Tensor, node_mask: torch.Tensor) -> torch.Tensor:
-        _ = node_features
         batch_size, max_nodes, _ = adj.shape
         summaries = torch.zeros(
             batch_size,
@@ -231,10 +232,12 @@ class QuOpEmbedding(nn.Module):
             local_summary = self._single_graph_descriptors(local_adj)  # -> (n_valid, summary_dim)
             summaries[b, :n_valid] = local_summary  # -> fill valid nodes
 
+        summaries = self.summary_norm(summaries)  # (batch, n, summary_dim) -> (batch, n, summary_dim)
+        fused = torch.cat([node_features, summaries], dim=-1)  # (batch, n, f)+(batch, n, s)->(batch, n, f+s)
         if self.trainable_projection:
-            z = self.proj(summaries)  # (batch, n, summary_dim) -> (batch, n, embedding_dim)
+            z = self.proj(fused)  # (batch, n, f+s) -> (batch, n, embedding_dim)
         else:
-            z = self.fixed_proj(summaries)  # (batch, n, summary_dim) -> (batch, n, embedding_dim)
+            z = self.fixed_proj(fused)  # (batch, n, f+s) -> (batch, n, embedding_dim)
 
         mask = node_mask.unsqueeze(-1).to(z.dtype)  # (batch, n) -> (batch, n, 1)
         z = z * mask  # (batch, n, d) * (batch, n, 1) -> (batch, n, d)
@@ -244,22 +247,24 @@ class QuOpEmbedding(nn.Module):
 class QWalkVecEmbedding(nn.Module):
     """Algorithm 2 — walk-derived node descriptors."""
 
-    def __init__(self, config: ModelConfig, trainable_projection: bool) -> None:
+    def __init__(self, config: ModelConfig, input_dim: int, trainable_projection: bool) -> None:
         super().__init__()
         self.steps = config.qwalk_steps
         self.wp = config.qwalk_wp
         self.wq = config.qwalk_wq
         self.trainable_projection = trainable_projection
         self.summary_dim = self.steps
+        self.fused_dim = input_dim + self.summary_dim
+        self.summary_norm = nn.LayerNorm(self.summary_dim, elementwise_affine=trainable_projection)
         if trainable_projection:
             self.proj = nn.Sequential(
-                nn.Linear(self.summary_dim, config.projection_hidden_dim),
+                nn.Linear(self.fused_dim, config.projection_hidden_dim),
                 nn.ReLU(),
                 nn.Linear(config.projection_hidden_dim, config.embedding_dim),
             )
         else:
             self.fixed_proj = FixedProjection(
-                in_dim=self.summary_dim,
+                in_dim=self.fused_dim,
                 out_dim=config.embedding_dim,
                 seed=config.seed + 17,
                 trainable=False,
@@ -275,15 +280,15 @@ class QWalkVecEmbedding(nn.Module):
         walk_logits = self.wp * identity + self.wq * transition  # (n, n) + (n, n) -> (n, n)
         walk_operator = torch.softmax(walk_logits, dim=-1)  # (n, n) -> (n, n)
 
-        current = identity  # (n, n)
+        # Approximate node visitation dynamics using a global walk state.
+        current = torch.full((n,), 1.0 / max(n, 1), device=local_adj.device, dtype=local_adj.dtype)  # (n,)
         descriptors = torch.zeros(n, self.steps, device=local_adj.device, dtype=torch.float32)  # (n, T)
         for t in range(self.steps):
-            current = current @ walk_operator  # (n, n) @ (n, n) -> (n, n)
-            descriptors[:, t] = torch.diag(current)  # (n, n) -> (n,)
+            current = current @ walk_operator  # (n,) @ (n, n) -> (n,)
+            descriptors[:, t] = current  # (n,) -> node visitation probability at step t
         return descriptors
 
     def forward(self, node_features: torch.Tensor, adj: torch.Tensor, node_mask: torch.Tensor) -> torch.Tensor:
-        _ = node_features
         batch_size, max_nodes, _ = adj.shape
         summaries = torch.zeros(
             batch_size,
@@ -301,10 +306,12 @@ class QWalkVecEmbedding(nn.Module):
             local_summary = self._single_graph_descriptors(local_adj)  # -> (n_valid, T)
             summaries[b, :n_valid] = local_summary  # -> fill valid nodes
 
+        summaries = self.summary_norm(summaries)  # (batch, n, T) -> (batch, n, T)
+        fused = torch.cat([node_features, summaries], dim=-1)  # (batch, n, f)+(batch, n, T)->(batch, n, f+T)
         if self.trainable_projection:
-            z = self.proj(summaries)  # (batch, n, T) -> (batch, n, d)
+            z = self.proj(fused)  # (batch, n, f+T) -> (batch, n, d)
         else:
-            z = self.fixed_proj(summaries)  # (batch, n, T) -> (batch, n, d)
+            z = self.fixed_proj(fused)  # (batch, n, f+T) -> (batch, n, d)
 
         mask = node_mask.unsqueeze(-1).to(z.dtype)  # (batch, n) -> (batch, n, 1)
         z = z * mask  # (batch, n, d) * (batch, n, 1) -> (batch, n, d)
@@ -314,13 +321,15 @@ class QWalkVecEmbedding(nn.Module):
 class QPEEmbedding(nn.Module):
     """Algorithm 3 — quantum positional encoding via spectral evolution."""
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: ModelConfig, input_dim: int) -> None:
         super().__init__()
         self.times = [float(t) for t in config.qpe_times]
         self.anchors = config.qpe_anchors
         self.summary_dim = len(self.times) * self.anchors
+        self.fused_dim = input_dim + self.summary_dim
+        self.summary_norm = nn.LayerNorm(self.summary_dim, elementwise_affine=False)
         self.fixed_proj = FixedProjection(
-            in_dim=self.summary_dim,
+            in_dim=self.fused_dim,
             out_dim=config.embedding_dim,
             seed=config.seed + 23,
             trainable=False,
@@ -354,7 +363,6 @@ class QPEEmbedding(nn.Module):
         return descriptors
 
     def forward(self, node_features: torch.Tensor, adj: torch.Tensor, node_mask: torch.Tensor) -> torch.Tensor:
-        _ = node_features
         batch_size, max_nodes, _ = adj.shape
         summaries = torch.zeros(
             batch_size,
@@ -372,7 +380,9 @@ class QPEEmbedding(nn.Module):
             local_summary = self._single_graph_descriptors(local_adj)  # -> (n_valid, A*T)
             summaries[b, :n_valid] = local_summary
 
-        z = self.fixed_proj(summaries)  # (batch, n, A*T) -> (batch, n, d)
+        summaries = self.summary_norm(summaries)  # (batch, n, A*T) -> (batch, n, A*T)
+        fused = torch.cat([node_features, summaries], dim=-1)  # (batch, n, f)+(batch, n, A*T)->(batch, n, f+A*T)
+        z = self.fixed_proj(fused)  # (batch, n, f+A*T) -> (batch, n, d)
         mask = node_mask.unsqueeze(-1).to(z.dtype)  # (batch, n) -> (batch, n, 1)
         z = z * mask  # (batch, n, d) * (batch, n, 1) -> (batch, n, d)
         return z
@@ -388,15 +398,15 @@ def build_embedding_module(config: ModelConfig, input_dim: int) -> nn.Module:
     if kind == "angle_vqc":
         return AngleVQCPlaceholder(config=config, input_dim=input_dim)
     if kind == "quop":
-        return QuOpEmbedding(config=config, trainable_projection=False)
+        return QuOpEmbedding(config=config, input_dim=input_dim, trainable_projection=False)
     if kind == "quop_trainable":
-        return QuOpEmbedding(config=config, trainable_projection=True)
+        return QuOpEmbedding(config=config, input_dim=input_dim, trainable_projection=True)
     if kind == "qwalkvec":
-        return QWalkVecEmbedding(config=config, trainable_projection=False)
+        return QWalkVecEmbedding(config=config, input_dim=input_dim, trainable_projection=False)
     if kind == "qwalkvec_trainable":
-        return QWalkVecEmbedding(config=config, trainable_projection=True)
+        return QWalkVecEmbedding(config=config, input_dim=input_dim, trainable_projection=True)
     if kind == "qpe":
-        return QPEEmbedding(config=config)
+        return QPEEmbedding(config=config, input_dim=input_dim)
     raise ValueError(f"Unknown embedding_kind: {config.embedding_kind}")
 
 

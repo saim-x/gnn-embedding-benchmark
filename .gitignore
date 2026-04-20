@@ -22,6 +22,7 @@ htmlcov/
 # Local experiment artifacts
 best_model.pt
 data/
+paper/
 
 # OS/editor
 .DS_Store

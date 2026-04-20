@@ -99,6 +99,33 @@ class TestScaffold(unittest.TestCase):
                 )
             self.assertEqual(tuple(logits.shape), (first_batch["labels"].shape[0], 2))
 
+    def test_quantum_embeddings_depend_on_base_features(self) -> None:
+        cfg = copy.deepcopy(self.base_cfg)
+        loader = build_dataloader(config=cfg, split="train")
+        batch = next(iter(loader))
+        input_dim = int(batch["node_features"].size(-1))
+        variants = ["quop", "quop_trainable", "qwalkvec", "qwalkvec_trainable", "qpe"]
+
+        node_features_a = batch["node_features"].clone()
+        node_features_b = batch["node_features"].clone() + 0.5
+
+        for kind in variants:
+            cfg["model"]["embedding_kind"] = kind
+            model_cfg = build_model_config(cfg)
+            model = GraphEmbeddingBenchmarkModel(config=model_cfg, input_dim=input_dim)
+            with torch.no_grad():
+                logits_a = model(
+                    node_features=node_features_a,
+                    adj=batch["adj"],
+                    node_mask=batch["node_mask"],
+                )
+                logits_b = model(
+                    node_features=node_features_b,
+                    adj=batch["adj"],
+                    node_mask=batch["node_mask"],
+                )
+            self.assertFalse(torch.allclose(logits_a, logits_b), msg=f"{kind} ignored base node features")
+
     def test_train_smoke(self) -> None:
         cfg = copy.deepcopy(self.base_cfg)
         cfg["model"]["embedding_kind"] = "qwalkvec_trainable"
