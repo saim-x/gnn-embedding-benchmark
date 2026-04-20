@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this scaffold, please cite the paper below."
+title: "How Embeddings Shape Graph Neural Networks: Classical vs Quantum-Oriented Node Representations (scaffold)"
+type: software
+authors:
+  - family-names: Innan
+    given-names: Nouhaila
+  - family-names: Rosato
+    given-names: Antonello
+  - family-names: Marchisio
+    given-names: Alberto
+  - family-names: Shafique
+    given-names: Muhammad
+preferred-citation:
+  type: article
+  title: "How Embeddings Shape Graph Neural Networks: Classical vs Quantum-Oriented Node Representations"
+  authors:
+    - family-names: Innan
+      given-names: Nouhaila
+    - family-names: Rosato
+      given-names: Antonello
+    - family-names: Marchisio
+      given-names: Alberto
+    - family-names: Shafique
+      given-names: Muhammad
+  year: 2026
+  journal: "arXiv preprint arXiv:2604.15273"
+  url: "https://arxiv.org/abs/2604.15273v1"
+

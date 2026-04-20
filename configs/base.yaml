@@ -1,0 +1,95 @@
+# Configuration for How Embeddings Shape Graph Neural Networks: Classical vs Quantum-Oriented Node Representations
+# Paper: https://arxiv.org/abs/2604.15273v1
+#
+# CONVENTION:
+#   - §X.Y cites paper text
+#   - [UNSPECIFIED] marks choices not explicitly stated in the paper
+
+model:
+  # §A. Experimental Setup (Table I) — "Node embedding dim d = 32 (all methods)."
+  embedding_dim: 32
+  # §A. Experimental Setup (Table I) — "Laplacian eigenvector PE, k = 8."
+  pe_k: 8
+
+  # §B. Graph classifier and training protocol + Table I — fixed shared backbone
+  gin_layers: 3
+  gin_hidden_dim: 64
+  mlp_head_hidden_dim: 64
+  dropout: 0.2
+
+  # [UNSPECIFIED] Which embedding variant is the default runnable configuration.
+  # Alternatives: fixed, mlp, angle_vqc, quop, quop_trainable, qwalkvec, qwalkvec_trainable, qpe
+  embedding_kind: "qwalkvec_trainable"
+
+  # §A. Experimental Setup (Table I) — QWalkVec hyperparameters
+  qwalk_steps: 32
+  qwalk_wp: 0.5
+  qwalk_wq: 4.0
+
+  # §A. Experimental Setup (Table I) — QPE hyperparameters
+  qpe_times: [0.5, 1.0, 2.0]
+  qpe_anchors: 8
+
+  # [UNSPECIFIED] Algorithm 1 requires h and q but the paper does not give fixed numeric values.
+  # Using h=1, q=5; Alternatives: h in {2,3}, q in {4,6}
+  quop_hop_radius: 1
+  quop_qubits: 5
+
+  # [UNSPECIFIED] Trainable projection hidden size when projection MLP is used.
+  projection_hidden_dim: 64
+
+  # [UNSPECIFIED] Dataset-dependent value.
+  num_classes: 2
+
+training:
+  # §A. Experimental Setup (Table I) — "seed = 7"
+  seed: 7
+  # §A. Experimental Setup (Table I) — "Adam; lr 10^-3; weight decay 0; max epochs 30."
+  optimizer: "adam"
+  lr: 0.001
+  weight_decay: 0.0
+  max_epochs: 30
+  # [PARTIALLY_SPECIFIED] Paper states Adam but not beta/epsilon.
+  # Using PyTorch defaults.
+  adam_betas: [0.9, 0.999]
+  adam_eps: 1.0e-8
+
+  # §A. Experimental Setup (Table I) — "Batch size 16."
+  batch_size: 16
+  # §A. Experimental Setup (Table I) — "Monitor val Macro-F1; patience 7; select best checkpoint."
+  early_stopping_metric: "macro_f1"
+  early_stopping_patience: 7
+
+  # [UNSPECIFIED] Gradient clipping is not reported.
+  gradient_clip_norm: null
+
+data:
+  # §A. Experimental Setup (Table I) — benchmark datasets in this paper
+  dataset_name: "IMDB-BINARY"
+  # Dataset files are user-provided; this implementation does not auto-download.
+  data_dir: ""
+
+  # §A. Experimental Setup (Table I) — "Stratified 80/10/10 (train/val/test), seed = 7."
+  split_train: 0.8
+  split_val: 0.1
+  split_test: 0.1
+
+  # §I. INTRODUCTION — base features from degree one-hot + Laplacian PE (x || pe)
+  use_degree_onehot: true
+  # [UNSPECIFIED] Degree one-hot dimensionality depends on dataset stats.
+  degree_onehot_dim: 8
+
+  # §A. Experimental Setup (Table I) — QM9 setup (used only if dataset_name == QM9)
+  qm9_target_index: 0
+  qm9_bins: 2
+  qm9_max_graphs: 5000
+
+  # [UNSPECIFIED] DataLoader worker count for local environment.
+  num_workers: 0
+
+eval:
+  # §B. Graph classifier and training protocol — reported metrics
+  metrics: ["accuracy", "macro_f1", "macro_precision", "macro_recall"]
+  # [UNSPECIFIED] Evaluation cadence not explicitly stated.
+  eval_every_epochs: 1
+
